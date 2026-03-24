@@ -110,70 +110,71 @@ def nearest_hospital(request):
 
     return Response({"error": "No hospital found"})
 
-import math
-from .models import Hospital, AmbulanceDriver, Volunteer
-
 @api_view(['POST'])
 def smart_emergency(request):
-    user_lat = float(request.data.get("lat"))
-    user_lng = float(request.data.get("lng"))
+    try:
+        user_lat = request.data.get("lat")
+        user_lng = request.data.get("lng")
 
-    # 🔥 Step 1: Find nearest hospital
-    hospitals = Hospital.objects.filter(has_antivenom=True)
+        # ✅ check input
+        if user_lat is None or user_lng is None:
+            return Response({"error": "Invalid input"})
 
-    nearest_hospital = None
-    min_dist = float('inf')
+        user_lat = float(user_lat)
+        user_lng = float(user_lng)
 
-    for h in hospitals:
-        dist = math.sqrt((h.latitude - user_lat)**2 + (h.longitude - user_lng)**2)
+        # ✅ check hospitals
+        hospitals = Hospital.objects.all()
+        if not hospitals.exists():
+            return Response({"error": "No hospitals in database"})
 
-        if dist < min_dist:
-            min_dist = dist
-            nearest_hospital = h
+        # 🔥 find nearest hospital
+        nearest = None
+        min_dist = float('inf')
 
-    # convert to km approx
-    hospital_distance = min_dist * 111
+        for h in hospitals:
+            dist = math.sqrt(
+                (h.latitude - user_lat) ** 2 +
+                (h.longitude - user_lng) ** 2
+            )
 
-    # 🔥 If hospital is close (<10 km)
-    if nearest_hospital and hospital_distance < 10:
-        return Response({
-            "type": "hospital",
-            "name": nearest_hospital.name,
-            "lat": nearest_hospital.latitude,
-            "lng": nearest_hospital.longitude,
-            "distance": round(hospital_distance, 2)
-        })
+            if dist < min_dist:
+                min_dist = dist
+                nearest = h
 
-    # 🔥 Step 2: Find ambulance
-    drivers = AmbulanceDriver.objects.all()
+        hospital_distance = min_dist * 111
 
-    nearest_driver = None
-    min_driver_dist = float('inf')
+        # ✅ hospital case
+        if nearest and hospital_distance < 10:
+            return Response({
+                "type": "hospital",
+                "name": nearest.name,
+                "lat": nearest.latitude,
+                "lng": nearest.longitude,
+                "distance": round(hospital_distance, 2)
+            })
 
-    for d in drivers:
-        dist = math.sqrt((d.latitude - user_lat)**2 + (d.longitude - user_lng)**2)
+        # 🔥 ambulance fallback
+        drivers = AmbulanceDriver.objects.all()
+        if drivers.exists():
+            d = drivers.first()
+            return Response({
+                "type": "ambulance",
+                "name": d.user.name,
+                "phone": d.user.phone
+            })
 
-        if dist < min_driver_dist:
-            min_driver_dist = dist
-            nearest_driver = d
+        # 🔥 volunteer fallback
+        volunteers = Volunteer.objects.all()
+        if volunteers.exists():
+            v = volunteers.first()
+            return Response({
+                "type": "volunteer",
+                "name": v.user.name,
+                "phone": v.user.phone
+            })
 
-    if nearest_driver:
-        return Response({
-            "type": "ambulance",
-            "name": nearest_driver.user.name,
-            "phone": nearest_driver.user.phone,
-            "distance": round(min_driver_dist * 111, 2)
-        })
+        return Response({"error": "No help available"})
 
-    # 🔥 Step 3: Fallback → volunteers
-    volunteers = Volunteer.objects.all()
-
-    if volunteers.exists():
-        v = volunteers.first()
-        return Response({
-            "type": "volunteer",
-            "name": v.user.name,
-            "phone": v.user.phone
-        })
-
-    return Response({"error": "No help available"})
+    except Exception as e:
+        return Response({"error": str(e)})
