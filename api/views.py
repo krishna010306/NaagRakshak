@@ -1,3 +1,5 @@
+from urllib import request
+
 from django.shortcuts import render
 
 # Create your views here.
@@ -73,12 +75,18 @@ import math
 
 @api_view(['POST'])
 def nearest_hospital(request):
-    user_lat = float(request.data.get("lat"))
-    user_lng = float(request.data.get("lng"))
+    user_lat = request.data.get("lat")
+    user_lng = request.data.get("lng")
 
+    if user_lat is None or user_lng is None:
+        return Response({"error": "Invalid data"})
+
+    user_lat = float(user_lat)
+    user_lng = float(user_lng)
     hospitals = Hospital.objects.all()
 
-    nearest = None
+    if not hospitals.exists():
+        return Response({"error": "No hospitals in database"})
     min_distance = float('inf')
 
     for h in hospitals:
